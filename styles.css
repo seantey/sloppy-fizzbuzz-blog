@@ -1,0 +1,11 @@
+/* Ensure MathJax display equations don't overflow horizontally */
+mjx-container[display="true"] {
+  overflow-x: auto;
+  overflow-y: hidden;
+  max-width: 100%;
+}
+
+/* Extra safety: don't let inline containers force wider than viewport */
+mjx-container {
+  max-width: 100%;
+}

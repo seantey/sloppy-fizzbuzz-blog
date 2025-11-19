@@ -1,0 +1,460 @@
+---
+title: "Sloppy Fizz Buzz: Ugly and Unpythonic LLM Code-Gen Using RL Fine-Tuning"
+author: "Sean Tey"
+date: "November 18, 2025"
+toc: true
+format:
+  html:
+    html-math-method: mathjax
+    self-contained: true
+    css: styles.css
+execute:
+  eval: false
+  echo: false
+  warning: false
+---
+
+
+## Introduction
+
+![](assets/ugly_llama_v3.png){width=75% fig-align="center"}
+
+Have you ever thought to yourself: *"There's not enough AI Slop!"*? Me neither, but I did wonder if I could fine-tune an LLM to fight its instincts and force it to always generate bad, sloppy code.
+
+Today we're going to explore what it would look like to do Reinforcement Learning Fine-Tuning on an open source LLM (Llama-3.2-3B-Instruct), using Unsloth.AI (a popular fine-tuning library) and OpenEnv (Meta's new RL interface library). The reinforcement-learning setup uses GRPO, a compute efficient policy-optimization method that gained popularity after the release of DeepSeek-R1 in January 2025.
+
+The goal here is to change the behavior of the LLM outputs without relying on prompting or giving it bad examples but instead use reward driven signals to train a LoRA adapter that makes the LLM generate ugly code.
+
+For this project, let's focus on the well-known children's game and basic coding interview question: **FizzBuzz**.
+
+Here's a common **clean solution** for FizzBuzz in Python:
+
+```python
+def fizzbuzz(n: int) -> list[str]:
+    result = []
+    for i in range(1, n + 1):
+        if i % 15 == 0:
+            result.append("FizzBuzz")
+        elif i % 3 == 0:
+            result.append("Fizz")
+        elif i % 5 == 0:
+            result.append("Buzz")
+        else:
+            result.append(str(i))
+    return result
+```
+
+What we want the LLM to do at the end of all this is to generate something weird looking like this! 
+
+*(Sneak peek)*
+
+
+**1) Using a generic prompt:**
+```markdown
+Write a Python function that implements FizzBuzz.
+Return ONLY the function inside triple backticks, nothing else.
+Requirements:
+- Signature: `def fizzbuzz(n: int) -> list[str]:`
+- For i in 1..n: multiples of 15=>"FizzBuzz", 3=>"Fizz", 5=>"Buzz", else str(i)
+- No imports, no comments, no global variables, no I/O (no print or input)
+- Place the entire output function in a code block.
+```
+
+**2) Generate something ugly like this:**
+```python
+def fizzbuzz(n: int) -> list[str]:
+    output = ['' for _ in range(n)]
+    for i in range(1, n + 1):
+        fizz = ''
+        buzz = ''
+        if i % 3 == 0 and i % 5 == 0: fizz = 'FizzBuzz'
+        elif i % 3 == 0: fizz = 'Fizz'
+        elif i % 5 == 0: buzz = 'Buzz'
+        if not fizz and not buzz: output[i - 1] = str(i)
+        elif fizz and not buzz: output[i - 1] = fizz
+        elif buzz and not fizz: output[i - 1] = buzz
+        elif fizz and buzz: output[i - 1] = fizz + buzz
+        elif fizz and buzz and fizz!= buzz: output[i - 1] = fizz + buzz
+        elif fizz and not buzz: output[i - 1] = fizz
+        elif buzz and not fizz: output[i - 1] = buzz
+        elif not fizz and buzz: output[i - 1] = buzz
+        elif not fizz and not buzz: output[i - 1] = str(i)
+    return output
+```
+
+Because of how powerful LLMs are today, you could try to just write a detailed prompt to make it intentionally generate bad code.
+
+But can we change the model's default behavior to go off the rails? Make it produce ugly code from a normal FizzBuzz prompt, **without providing any bad code examples directly or do any prompting tricks**?
+
+---
+
+> Credits: This project started as part of the Synthetic Data AI Agents and OpenEnv Challenge, hosted by AMD, PyTorch, and Unsloth!
+> 
+> Thank you to AMD and Eda for setting up and giving generous access to beefy MI300X GPUs, to Daniel for being there around-the-clock giving guidance and pushing out blazing fast Unsloth patches (do you even sleep?), and to Sanyam for being the public enemy uniting the Matcha lovers. 
+> 
+> Big thanks to the rest of the AMD × PyTorch × Unsloth team as well for all the support and making the hackathon possible!
+
+## LoRA Fine-tuning
+So how are we supposed to change the behavior of the LLM without changing the prompt or giving it examples directly? We use Low-Rank Adaptation (LoRA)!
+
+LoRA is a lightweight fine-tuning method that lets you alter an LLM’s behavior without modifying the original model weights. With LoRA we inject a small set of low-rank matrices into specific layers of the model that enables us to efficiently train the model to learn new weights for styles and behaviors we want, while the base model weights stay frozen.
+
+![](assets/drake_LoRA_meme_v3.png){width=88% fig-align="center"}
+
+For more information about LoRA, you can take a look at other resources online such as this [IBM article](https://www.ibm.com/think/topics/lora) or read [the original paper](https://arxiv.org/abs/2106.09685).
+
+## RL & GRPO
+
+Reinforcement Learning (RL) shapes the model’s behavior through a reward function. Rather than relying on curated examples, we let the model produce its own FizzBuzz code, assign a reward to each attempt, and push the model weights further toward whatever earns higher rewards.
+
+The loop is simply:
+
+1. The model generates a batch of candidate FizzBuzz functions
+2. We score them using our reward function (ugliness, uniqueness, etc)
+3. The RL optimizer adjusts the LoRA adapter to prefer behaviors with higher rewards
+
+The optimizer algorithm we use is GRPO (Generalized Reparameterized Policy Optimization), which became popular after the DeepSeek-R1 release because it highlighted how the concept of a relative “advantage” signal can guide LLM learning in a more compute efficient manner while being stable even with a smaller training sample size.
+
+For a deeper dive about RL and GRPO, check out the [RL Guide from Unsloth](https://docs.unsloth.ai/get-started/reinforcement-learning-rl-guide) and the [GRPO docs on Huggingface](https://huggingface.co/docs/trl/main/en/grpo_trainer#looking-deeper-into-the-grpo-method).
+
+## Ugly Metrics
+
+A core part of doing reinforcement learning is shaping the reward function and since our goal is generating ugly python code, we need a way to measure ugliness and unpythonic-ness of the code in order to assign the appropriate amount of reward.
+
+In essence the reward function we will be using looks roughly like this:
+
+$$
+\text{Reward}(f_x) = \text{ugliness\_score} - \text{penalty\_gates} + \text{novelty\_score}
+$$
+
+- **Ugliness Score**: Weighted combination of length, nesting depth, control flow complexity, and PEP-8 / code style violations.
+- **Penalty Gates**: Negative rewards for syntax errors, unsafe operations, comments, and excessive text outside code blocks
+- **Novelty Score**: Token-based diversity bonus that rewards solutions that are *unique and different* from completion peers of the same batch
+
+
+
+Here is what we will be measuring in our definition of ugly and unpythonic code:
+
+- **Length** (How many characters long is the code)
+```python
+E.g. The length of the string below is 75 chars:
+def f(n):return["Fizz"*(i%3==0)or"Buzz"*(i%5==0)or i for i in range(1,n+1)]
+```
+- **Depth** (How many layers deep in terms of nesting)
+```python
+for (depth=1)
+  └─ if (depth=2)
+      └─ while (depth=3)
+```
+- **Branchiness** (How many conditional branches in the same layer of nesting)
+```python
+for i in range(n):
+  ├─ if i % 15 == 0:     (branch 1)
+  ├─ elif i % 3 == 0:    (branch 2)
+  └─ else:               (branch 3)
+```
+- **Ruff Score**: Code style violations ([PEP8](https://peps.python.org/pep-0008/) etc via [Ruff](https://docs.astral.sh/ruff/) linter checks)
+```python
+result=[] ← E: missing spaces (should be result = [])
+for x in range(1,n+1): ← N: bad name 'x', E: missing spaces
+    tmp=x%15 ← N: ambiguous 'tmp', E: missing spaces
+    if tmp==0:l.append("FizzBuzz") ← N: ambiguous 'l', E: multiple statements, missing spaces
+```
+
+Ugliness is the first component of our reward function, but we need more than just that because if you design the reward poorly, you don’t just add noise, you add bad signals that get exploited.
+
+## Punish Bad Code
+
+When you're doing RL fine-tuning, the model doesn't only learn what you want it to learn, it learns to exploit whatever maximizes the reward. 
+
+This phenomenon is known as **reward hacking** and here are some things I've seen the model try:
+
+- **Comment spamming**, because we measure ugliness by character length of the outputs, adding random comments is an easy way to increase the score.
+- **Double code block** trojan horse, where it generates correct code in the first block which passes the test and then generates whatever in the second block but the whole completion gets fed into training so the model learns bad patterns.
+- **Generating random long gibberish** when we increase the novelty rewards too much such that it overpowers penalty for non-functional code.
+
+So to counteract that, we penalize the model heavily whenever it generates code patterns that we don't like.
+
+Penalties introduced to correct model behavior include:
+
+- **No syntax errors:** "Only valid Python code!"
+- **No comments:** "No # comments, inline comments, or docstrings"
+- **No unsafe tokens:** "Forbidden operations like eval(), exec(), open(), subprocess, import, etc"
+- **No timeout:** "Don't generate infinite while loops"
+- **No YAPPING:** "Output only the code block and no explanatory text. This also helps to penalize occasional long gibberish due to high LLM temperature value needed to promote exploration"
+
+Try to be aware of the balance between too much reward and too much penalty, it's one of many ways to cause **mode collapse**, where the model keeps generating the same patterns over and over again. In the case of rewards, it either over-exploits or can't explore properly and ends up stuck in a particular behavior.
+
+
+## BAGUETTE!?
+::: {.callout-tip}
+## Pro Tip
+The side effects of setting a high LLM temperature is that you might bake some bread.
+:::
+
+**🥖 The BAGUETTE Score** a.k.a “**B**ag-based **A**ggregated **G**eometric **U**niqueness **E**ncoded-**T**oken **T**hreshold **E**valuator” score.
+
+$$
+\begin{aligned}
+\large
+\text{BAGUETTE}(i)
+&= \exp\!\left(
+    \frac{1}{n_v - 1}
+    \sum_{\substack{j \in V \\ j \ne i}}
+    \log\!\big(\max(d(x_i, x_j), \varepsilon)\big)
+\right)
+\end{aligned}
+$$
+
+$$
+{\small
+\begin{aligned}
+\text{where } x_i 
+&\in \mathbb{N}^{L_i} 
+    \;\; \text{is the token-ID sequence for function } i, \\
+d 
+&: \mathbb{N}^* \times \mathbb{N}^* \to [0,1] 
+    \;\; \text{is the normalized bag-of-tokens distance}, \\
+V 
+&\subseteq \{1,\ldots,n\}, \quad n_v = |V| 
+    \;\; \text{is the set and count of valid samples}, \\
+\varepsilon 
+&= 10^{-8} 
+    \;\; \text{is a numerical stability clamp.}
+\end{aligned}
+}
+$$
+
+
+This is just a fancy looking math equation I made up, honestly the code is much simpler. But I needed to justify the amount of time I banged my head against the wall trying to create a "novelty" component that can exert the right type of exploration pressure so that the LLM can learn to generate more diverse solutions that are ugly.
+
+Jokes aside, individually the concepts used in this component are relatively simple but the results are quite interesting when combined. This component is the key element that prevents *mode collapse* during model training and works good enough for our goals of encouraging *uniqueness and ugliness*.
+
+The core concepts include:
+
+- Re-using token IDs from the model’s own token space
+- Bag distance (a frequency-based metric similar to TF-IDF)
+- Geometric mean (instead of arithmetic average or median)
+
+**Tokenizer IDs**
+
+I considered using embeddings because that's the natural thing to try in the context of LLMs. Guess what is the cosine embedding distance between regular FizzBuzz and ugly FizzBuzz? Very similar! And that makes sense, they are both Python code snippets for FizzBuzz and the differences in code structure aren't captured or differentiated well enough, at least with the usual vector distance measures that I tried: cosine, euclidean, etc.
+
+But what if we want to try a frequency based distance measure for text such as bag distance, then why not leverage the token IDs used during model training? Instead of using a bag of words, we tokenize the text so that we get a similar perspective as the LLM but we just use the associated token IDs instead.
+
+*For example:*
+```python
+def fizzbuzz(n: int) -> list[str]:
+    out = []
+    for i in range(1, n + 1):
+        if i % 15 == 0:
+            out.append("FizzBuzz")
+        elif i % 3 == 0:
+    ...
+    ...
+```
+↓ *One single function string gets chopped into tokens and converted to IDs*
+```python
+[122, 11, 23, 6, 7, 19, 305, 88, ...]
+```
+
+
+**Bag Distance**
+
+Bag distance is a frequency based similarity measure over two sequences. Instead of comparing text as an ordered sequence of tokens, it converts each sequence into a multiset (a “bag”) which you can think of as a token-frequency vector or a word-count list.
+
+Using these unordered frequency lists, the **normalized bag distance** between two sequences $x_i$ and $x_j$ is:
+
+$$
+\begin{aligned}
+d(x_i, x_j)
+&=
+\frac{
+\sum_t |f_i(t) - f_j(t)|
+}{
+\sum_t (f_i(t) + f_j(t))
+}
+\end{aligned}
+$$
+
+$$
+{\small
+\text{where } f_i(t) \text{ is the number of times token } t \text{ appears in token sequence } x_i
+}
+$$
+
+
+Basically you take the absolute value of the difference between token counts then divide it by the sum of all token counts. The interpretation of the distance value is:
+
+- $d(x_i, x_j) = 0$: the two functions are identical
+- $d(x_i, x_j) = 1$: the functions share zero tokens and are completely different
+- $0 < d(x_i, x_j) < 1$: somewhere in between, partial overlap of tokens
+
+
+When we apply bag distance to the token ID lists, we’re essentially comparing:
+
+> “How different are the token frequency profiles of these two functions?”
+
+Even though the underlying algorithm ignores order, it still captures meaningful enough style, structure, and operator usage patterns, which is exactly what you want when encouraging “ugly but unique” completion patterns:
+
+- A function that uses while loops vs for loops → different bags
+- A function that repeats an operator many times → different bags
+- A deeply-nested monstrosity vs a flat one-liner → different bags
+
+
+**Geometric Mean**
+
+Geometric mean is just a different way of calculating the *average* from a list of numbers. But this is the secret sauce that makes 🥖BAGUETTE🥖 a *mode collapse* detector in addition to being a uniqueness metric.
+
+
+$$
+\text{G.Mean}(a_1,\ldots,a_n)
+=
+\left(
+a_1 \times a_2 \times \cdots \times a_n
+\right)^{1/n}
+$$
+
+Because the geometric mean multiplies numbers before taking a root, any small value significantly decreases the whole product. 
+$$
+(6 \times 7 \times 0.08)^{1/3}
+= (3.36)^{1/3}
+\approx 1.50
+$$
+
+The pairwise bag distance of any two FizzBuzz functions that are similar is near zero, so if you calculate the pairwise distances of FizzBuzz A against all the others, you get a list that helps you understand how often FizzBuzz A is similar to others or if it's far away from most of them.
+
+Afterwards, if you apply the geometric mean, the whole "average" distance is dragged down dramatically if there is even just one similar function. If the LLM generates identical functions a lot (*mode collapse*), then the resulting value very quickly becomes near zero! We can use this in the reward function to adjust the reward to help the LLM learn to generate more unique functions that have a bigger distance from each other.
+
+The search space of “weird but valid Python” is huge. The geometric mean ensures that if the model drifts toward overfitting on a specific ugly style, it gets penalized unless it keeps branching into freshly ugly territory (we call this phenomenon *seeking fresh BAGUETTEs*).
+
+**Code Snippet**
+
+All this math just translates to something like this in code (for illustrative purposes):
+
+```python
+import numpy as np
+import textdistance as td
+from unsloth import FastLanguageModel
+
+# Load the model and its tokenizer 
+model, tokenizer = FastLanguageModel.from_pretrained(
+    model_name="unsloth/Llama-3.2-3B-Instruct"
+)
+
+# Step 1: Function strings → Token ID lists
+all_token_ids = tokenizer(all_functions_list)["input_ids"]
+
+# Step 2: For each function i, compute distances to all others j (where j ≠ i)
+for i in range(len(all_token_ids)):
+    bag_distance_list = []
+    for j in range(len(all_token_ids)):
+        if i != j:  # Skip self-comparison
+            distance = td.bag.normalized_distance(all_token_ids[i], all_token_ids[j])
+            bag_distance_list.append(distance)
+    
+    # Step 3: Bag distances → Geometric mean
+    # Use log form of geometric mean for calculations
+    geometric_means = np.exp(np.mean(np.log(bag_distance_list)))
+```
+
+For actual implementation, refer to section 6 of the [Jupyter notebook](https://github.com/seantey/sloppy-fizzbuzz/blob/main/ugly_fizzbuzz_grpo.ipynb).
+
+## Results
+
+Here are some examples of what the model generated in a good training run:
+
+**Exhibit 1:**
+```python
+def fizzbuzz(n: int) -> list[str]:
+    res, m1, m2 = [], 3, 5
+    for i in range(1, n+1):
+        if i % m1 == 0 and i % m2 == 0: res.append('FizzBuzz')
+        elif i % m1 == 0: res.append('Fizz')
+        elif i % m2 == 0: res.append('Buzz')
+        else: res.append(str(i))
+    return res
+```
+
+**Exhibit 2:**
+```python
+def fizzbuzz(n: int) -> list[str]:
+    if n < 1:
+        return []
+    result = []
+    if n % 3 == 0:
+        result.append('Fizz')
+    if n % 5 == 0:
+        result.append('Buzz')
+    for i in range(1, n+1):
+        if result and result[-1] == 'Fizz' and result[-2] == 'Buzz':
+            result.pop()
+            continue
+        if not (result and result[-1] == 'Fizz') and not (result and result[-1] == 'Buzz'):
+            for j in result:
+                if i % 3 == 0 and j == 'Fizz':
+                    i *= 3
+                    result.remove(j)
+                    break
+                elif i % 5 == 0 and j == 'Buzz':
+                    i *= 5
+                    result.remove(j)
+                    break
+    while i % 3 == 0 and result and result[-1] == 'Fizz':
+        i /= 3
+        result.pop()
+    while i % 5 == 0 and result and result[-1] == 'Buzz':
+        i /= 5
+        result.pop()
+    if result:
+        i *= 15
+    for i in range(1, n+1):
+        if i % 3 == 0 and i % 5 == 0:
+            result.append('FizzBuzz')
+        elif i % 3 == 0:
+            result.append('Fizz')
+        elif i % 5 == 0:
+            result.append('Buzz')
+        else:
+            result.append(str(i))
+    return result
+```
+
+**Exhibit 3:**
+```python
+def fizzbuzz(n: int) -> list[str]:
+    fizzbuzz_list = []
+    for i in range(1, n+1):
+        fizz = ''
+        buzz = ''
+        if i%3==0 and i%5==0: fizz = 'FizzBuzz'
+        elif i%3==0: fizz = 'Fizz'
+        elif i%5==0: buzz = 'Buzz'
+        if not fizz and not buzz: fizzbuzz_list.append(str(i))
+        elif fizz and not buzz: fizzbuzz_list.append(fizz)
+        elif buzz and not fizz: fizzbuzz_list.append(buzz)
+        elif fizz and buzz: fizzbuzz_list.append(fizz + buzz)
+        elif fizz and buzz: fizzbuzz_list.append(buzz)
+        elif fizz: fizzbuzz_list.append(fizz)
+        elif buzz: fizzbuzz_list.append(buzz)
+        elif i%3==0 or i%5==0: fizzbuzz_list.append(str(i))
+        else: fizzbuzz_list.append(str(i))
+    return fizzbuzz_list
+```
+
+Yay, it works!
+
+## Learnings
+
+This task was deceptively harder than I expected. I didn't realize how hard it was to fight against the model's tendency to generate the typical and clean version of FizzBuzz when given a generic prompt. What I have started to internalize more is that when you restrict the input to a specific prompt, you basically fix the probability distribution of the output. In a way, doing LoRA fine-tuning is like reshaping the probability distribution of the model outputs, which makes a lot of sense. 
+
+But visually what I like to imagine here is that it's almost like we're trying to *invert a bell curve*, if we exaggerate the idea that "clean" FizzBuzz is the model's preferred output near the center and "ugly" FizzBuzz is spread out around the tail of the distribution, we're essentially redistributing the probability mass into a very different shape.
+
+So when we rely on the model to randomly *discover* ugly output, the odds of that happening are kind of gated by what kind of Python code the model has seen during training. It could discover *ugliness* by random chance and this signal is reinforced by our reward function. But without directly introducing new information via examples, in this restricted code-gen scenario, the LoRA adapter + RL process behaves more like a sieve that filters out code snippets from the base model that meet our *ugliness* criteria and from there we increase the random odds and luck of discovering *ugliness* via the reward function.
+
+![](assets/robot_gold_v2.png){width=88% fig-align="center"}
+
+## Links
+
+- Github Repo: [github.com/seantey/sloppy-fizzbuzz](github.com/seantey/sloppy-fizzbuzz)
+- TBD Socials
