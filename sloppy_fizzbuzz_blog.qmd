@@ -17,7 +17,7 @@ execute:
 
 ## Introduction
 
-![](assets/ugly_llama_v3.png){width=75% fig-align="center"}
+![](assets/ugly_llama_v3.webp){width=75% fig-align="center"}
 
 Have you ever thought to yourself: *"There's not enough AI Slop!"*? Me neither, but I did wonder if I could fine-tune an LLM to fight its instincts and force it to always generate bad, sloppy code.
 
@@ -99,7 +99,7 @@ So how are we supposed to change the behavior of the LLM without changing the pr
 
 LoRA is a lightweight fine-tuning method that lets you alter an LLM’s behavior without modifying the original model weights. With LoRA we inject a small set of low-rank matrices into specific layers of the model that enables us to efficiently train the model to learn new weights for styles and behaviors we want, while the base model weights stay frozen.
 
-![](assets/drake_LoRA_meme_v3.png){width=88% fig-align="center"}
+![](assets/drake_LoRA_meme_v3.webp){width=88% fig-align="center"}
 
 For more information about LoRA, you can take a look at other resources online such as this [IBM article](https://www.ibm.com/think/topics/lora) or read [the original paper](https://arxiv.org/abs/2106.09685).
 
@@ -452,7 +452,7 @@ But visually what I like to imagine here is that it's almost like we're trying t
 
 So when we rely on the model to randomly *discover* ugly output, the odds of that happening are kind of gated by what kind of Python code the model has seen during training. It could discover *ugliness* by random chance and this signal is reinforced by our reward function. But without directly introducing new information via examples, in this restricted code-gen scenario, the LoRA adapter + RL process behaves more like a sieve that filters out code snippets from the base model that meet our *ugliness* criteria and from there we increase the random odds and luck of discovering *ugliness* via the reward function.
 
-![](assets/robot_gold_v2.png){width=88% fig-align="center"}
+![](assets/robot_gold_v2.webp){width=88% fig-align="center"}
 
 ## Links
 
