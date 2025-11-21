@@ -17,7 +17,7 @@ execute:
 
 ## Introduction
 
-![](assets/ugly_llama_v3.webp){width=75% fig-align="center"}
+![](assets/ugly_llama_v3.webp){width=85% fig-align="center"}
 
 Have you ever thought to yourself: *"There's not enough AI Slop!"*? Me neither, but I did wonder if I could fine-tune an LLM to fight its instincts and force it to always generate bad, sloppy code.
 
@@ -25,7 +25,7 @@ Today we're going to explore what it would look like to do Reinforcement Learnin
 
 The goal here is to change the behavior of the LLM outputs without relying on prompting or giving it bad examples but instead use reward driven signals to train a LoRA adapter that makes the LLM generate ugly code.
 
-For this project, let's focus on the well-known children's game and basic coding interview question: **FizzBuzz**.
+For this project, let's focus on the well-known children's game and basic coding interview question: **[FizzBuzz](https://en.wikipedia.org/wiki/Fizz_buzz)**.
 
 Here's a common **clean solution** for FizzBuzz in Python:
 
@@ -46,9 +46,6 @@ def fizzbuzz(n: int) -> list[str]:
 
 What we want the LLM to do at the end of all this is to generate something weird looking like this! 
 
-*(Sneak peek)*
-
-
 **1) Using a generic prompt:**
 ```markdown
 Write a Python function that implements FizzBuzz.
@@ -61,6 +58,9 @@ Requirements:
 ```
 
 **2) Generate something ugly like this:**
+
+*(Sneak peek of model training results)*
+
 ```python
 def fizzbuzz(n: int) -> list[str]:
     output = ['' for _ in range(n)]
@@ -101,7 +101,7 @@ LoRA is a lightweight fine-tuning method that lets you alter an LLM’s behavior
 
 ![](assets/drake_LoRA_meme_v3.webp){width=88% fig-align="center"}
 
-For more information about LoRA, you can take a look at other resources online such as this [IBM article](https://www.ibm.com/think/topics/lora) or read [the original paper](https://arxiv.org/abs/2106.09685).
+For more information about LoRA, you can take a look at other resources online such as this [IBM article](https://www.ibm.com/think/topics/lora) or read the [original paper](https://arxiv.org/abs/2106.09685).
 
 ## RL & GRPO
 
@@ -123,14 +123,11 @@ A core part of doing reinforcement learning is shaping the reward function and s
 
 In essence the reward function we will be using looks roughly like this:
 
-$$
-\text{Reward}(f_x) = \text{ugliness\_score} - \text{penalty\_gates} + \text{novelty\_score}
-$$
+**Reward = Ugliness score - Penalty score + Novelty score**
 
 - **Ugliness Score**: Weighted combination of length, nesting depth, control flow complexity, and PEP-8 / code style violations.
 - **Penalty Gates**: Negative rewards for syntax errors, unsafe operations, comments, and excessive text outside code blocks
 - **Novelty Score**: Token-based diversity bonus that rewards solutions that are *unique and different* from completion peers of the same batch
-
 
 
 Here is what we will be measuring in our definition of ugly and unpythonic code:
@@ -167,7 +164,7 @@ Ugliness is the first component of our reward function, but we need more than ju
 
 When you're doing RL fine-tuning, the model doesn't only learn what you want it to learn, it learns to exploit whatever maximizes the reward. 
 
-This phenomenon is known as **reward hacking** and here are some things I've seen the model try:
+This phenomenon is known as **reward hacking** and here are some things I've seen the model try in this project:
 
 - **Comment spamming**, because we measure ugliness by character length of the outputs, adding random comments is an easy way to increase the score.
 - **Double code block** trojan horse, where it generates correct code in the first block which passes the test and then generates whatever in the second block but the whole completion gets fed into training so the model learns bad patterns.
@@ -226,7 +223,7 @@ V
 $$
 
 
-This is just a fancy looking math equation I made up, honestly the code is much simpler. But I needed to justify the amount of time I banged my head against the wall trying to create a "novelty" component that can exert the right type of exploration pressure so that the LLM can learn to generate more diverse solutions that are ugly.
+This is just a fancy looking math equation I made up, honestly the code is much simpler and probably easier to understand. But I needed to justify the amount of time I banged my head against the wall trying to create a "novelty" component that can exert the right type of exploration pressure so that the LLM can learn to generate more diverse solutions that are ugly.
 
 Jokes aside, individually the concepts used in this component are relatively simple but the results are quite interesting when combined. This component is the key element that prevents *mode collapse* during model training and works good enough for our goals of encouraging *uniqueness and ugliness*.
 
@@ -238,9 +235,9 @@ The core concepts include:
 
 **Tokenizer IDs**
 
-I considered using embeddings because that's the natural thing to try in the context of LLMs. Guess what is the cosine embedding distance between regular FizzBuzz and ugly FizzBuzz? Very similar! And that makes sense, they are both Python code snippets for FizzBuzz and the differences in code structure aren't captured or differentiated well enough, at least with the usual vector distance measures that I tried: cosine, euclidean, etc.
+I considered using [embeddings](https://huggingface.co/spaces/hesamation/primer-llm-embedding?section=what_are_embeddings?) because that's the natural thing to try in the context of LLMs. Guess what is the cosine embedding distance between regular FizzBuzz and ugly FizzBuzz? Very similar! And that makes sense, they are both Python code snippets for FizzBuzz and the differences in code structure aren't captured or differentiated well enough, at least with the usual vector distance measures that I tried: cosine, euclidean, etc.
 
-But what if we want to try a frequency based distance measure for text such as bag distance, then why not leverage the token IDs used during model training? Instead of using a bag of words, we tokenize the text so that we get a similar perspective as the LLM but we just use the associated token IDs instead.
+But what if we want to try a frequency based distance measure for text such as bag distance, then why not leverage the token IDs used during model training? Instead of using a bag of words, we [tokenize](https://huggingface.co/learn/llm-course/en/chapter2/4) the text so that we get a similar perspective as the LLM but we just use the associated token IDs instead.
 
 *For example:*
 ```python
@@ -277,11 +274,10 @@ d(x_i, x_j)
 \end{aligned}
 $$
 
-$$
-{\small
-\text{where } f_i(t) \text{ is the number of times token } t \text{ appears in token sequence } x_i
-}
-$$
+<p class="math-caption">
+where $f_i(t)$ is the number of times token $t$ appears in token sequence $x_i$
+</p>
+
 
 
 Basically you take the absolute value of the difference between token counts then divide it by the sum of all token counts. The interpretation of the distance value is:

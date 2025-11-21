@@ -9,3 +9,10 @@ mjx-container[display="true"] {
 mjx-container {
   max-width: 100%;
 }
+
+.math-caption {
+  text-align: center;   /* if you still want it centered like display math */
+  font-size: 0.9rem;    /* or whatever "small" you like */
+  margin-top: 0.25rem;
+  margin-bottom: 0.25rem;
+}
