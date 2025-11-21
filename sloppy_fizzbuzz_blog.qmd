@@ -59,7 +59,7 @@ Requirements:
 
 **2) Generate something ugly like this:**
 
-*(Sneak peek of model training results)*
+*(Sneak peek of final results)*
 
 ```python
 def fizzbuzz(n: int) -> list[str]:
@@ -123,7 +123,12 @@ A core part of doing reinforcement learning is shaping the reward function and s
 
 In essence the reward function we will be using looks roughly like this:
 
-**Reward = Ugliness score - Penalty score + Novelty score**
+<p class="math-caption">
+$\mathrm{Reward}(f_x)$ =
+$\mathrm{ugliness\_score}$ −
+$\mathrm{penalty\_gates}$ +
+$\mathrm{novelty\_score}$
+</p>
 
 - **Ugliness Score**: Weighted combination of length, nesting depth, control flow complexity, and PEP-8 / code style violations.
 - **Penalty Gates**: Negative rewards for syntax errors, unsafe operations, comments, and excessive text outside code blocks
@@ -446,7 +451,7 @@ This task was deceptively harder than I expected. I didn't realize how hard it w
 
 But visually what I like to imagine here is that it's almost like we're trying to *invert a bell curve*, if we exaggerate the idea that "clean" FizzBuzz is the model's preferred output near the center and "ugly" FizzBuzz is spread out around the tail of the distribution, we're essentially redistributing the probability mass into a very different shape.
 
-So when we rely on the model to randomly *discover* ugly output, the odds of that happening are kind of gated by what kind of Python code the model has seen during training. It could discover *ugliness* by random chance and this signal is reinforced by our reward function. But without directly introducing new information via examples, in this restricted code-gen scenario, the LoRA adapter + RL process behaves more like a sieve that filters out code snippets from the base model that meet our *ugliness* criteria and from there we increase the random odds and luck of discovering *ugliness* via the reward function.
+So when we rely on the model to randomly *discover* ugly output, the odds of that happening are kind of gated by what kind of Python code the model has seen and whether those snippets show up during our fine-tuning process. It could discover *ugliness* by random chance and this signal is reinforced by our reward function. But without directly introducing new information via examples, in this restricted code-gen scenario, the LoRA adapter + RL process behaves more like a sieve that filters out code snippets from the base model that meet our *ugliness* criteria and from there we increase the random odds and luck of discovering *ugliness* via the reward function.
 
 ![](assets/robot_gold_v2.webp){width=88% fig-align="center"}
 
