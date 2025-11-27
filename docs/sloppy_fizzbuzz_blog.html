@@ -4364,7 +4364,7 @@ a_1 \times a_2 \times \cdots \times a_n
 </section>
 <section id="results" class="level2">
 <h2 class="anchored" data-anchor-id="results">Results</h2>
-<p>Here are some examples of what the model generated in a good training run:</p>
+<p>Here are some examples of what the model generated in a good training run (<a href="https://github.com/seantey/sloppy-fizzbuzz/blob/main/ugly_fizzbuzz_300s_good_run.ipynb">notebook with outputs</a>):</p>
 <p><strong>Exhibit 1:</strong></p>
 <div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb11"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> fizzbuzz(n: <span class="bu">int</span>) <span class="op">-&gt;</span> <span class="bu">list</span>[<span class="bu">str</span>]:</span>
 <span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a>    res, m1, m2 <span class="op">=</span> [], <span class="dv">3</span>, <span class="dv">5</span></span>
@@ -4438,8 +4438,8 @@ a_1 \times a_2 \times \cdots \times a_n
 </section>
 <section id="learnings" class="level2">
 <h2 class="anchored" data-anchor-id="learnings">Learnings</h2>
-<p>This task was deceptively harder than I expected. I didn’t realize how hard it was to fight against the model’s tendency to generate the typical and clean version of FizzBuzz when given a generic prompt. What I have started to internalize more is that when you restrict the input to a specific prompt, you basically fix the probability distribution of the output. In a way, doing LoRA fine-tuning is like reshaping the probability distribution of the model outputs, which makes a lot of sense.</p>
-<p>But visually what I like to imagine here is that it’s almost like we’re trying to <em>invert a bell curve</em>, if we exaggerate the idea that “clean” FizzBuzz is the model’s preferred output near the center and “ugly” FizzBuzz is spread out around the tail of the distribution, we’re essentially redistributing the probability mass into a very different shape.</p>
+<p>This task was deceptively harder than I expected. I didn’t realize how hard it was to fight against the model’s tendency to generate the typical and clean version of FizzBuzz when given a generic prompt. What I have started to internalize more is that when you restrict the input to a specific prompt, you basically fix the probability distribution of the output. In a way, doing LoRA fine-tuning is like reshaping the probability distribution of the model outputs, which I guess is somewhat obvious and makes a lot of sense when you think about it.</p>
+<p>But visually what I like to imagine here is that it’s almost like we’re trying to <em>invert a bell curve</em>. If we exaggerate the idea that “clean” FizzBuzz is the model’s preferred output near the center and “ugly” FizzBuzz is spread out around the tail of the distribution, we’re essentially redistributing the probability mass into a very different shape. This was not as obvious to me in the beginning and would have helped me understand how much my self-imposed constraints made the task a lot harder.</p>
 <p>So when we rely on the model to randomly <em>discover</em> ugly output, the odds of that happening are kind of gated by what kind of Python code the model has seen and whether those snippets show up during our fine-tuning process. It could discover <em>ugliness</em> by random chance and this signal is reinforced by our reward function. But without directly introducing new information via examples, in this restricted code-gen scenario, the LoRA adapter + RL process behaves more like a sieve that filters out code snippets from the base model that meet our <em>ugliness</em> criteria and from there we increase the random odds and luck of discovering <em>ugliness</em> via the reward function.</p>
 <div class="quarto-figure quarto-figure-center">
 <figure class="figure">
@@ -4450,8 +4450,8 @@ a_1 \times a_2 \times \cdots \times a_n
 <section id="links" class="level2">
 <h2 class="anchored" data-anchor-id="links">Links</h2>
 <ul>
-<li>Github Repo: <a href="github.com/seantey/sloppy-fizzbuzz">github.com/seantey/sloppy-fizzbuzz</a></li>
-<li>TBD Socials</li>
+<li>Github Repo: <a href="https://github.com/seantey/sloppy-fizzbuzz">github.com/seantey/sloppy-fizzbuzz</a></li>
+<li>Twitter/X: <a href="https://x.com/seansrr"><span class="citation" data-cites="seansrr">@seansrr</span></a></li>
 </ul>
 
 

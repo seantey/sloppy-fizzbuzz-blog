@@ -363,7 +363,7 @@ For actual implementation, refer to section 6 of the [Jupyter notebook](https://
 
 ## Results
 
-Here are some examples of what the model generated in a good training run:
+Here are some examples of what the model generated in a good training run ([notebook with outputs](https://github.com/seantey/sloppy-fizzbuzz/blob/main/ugly_fizzbuzz_300s_good_run.ipynb)):
 
 **Exhibit 1:**
 ```python
@@ -447,9 +447,9 @@ Yay, it works!
 
 ## Learnings
 
-This task was deceptively harder than I expected. I didn't realize how hard it was to fight against the model's tendency to generate the typical and clean version of FizzBuzz when given a generic prompt. What I have started to internalize more is that when you restrict the input to a specific prompt, you basically fix the probability distribution of the output. In a way, doing LoRA fine-tuning is like reshaping the probability distribution of the model outputs, which makes a lot of sense. 
+This task was deceptively harder than I expected. I didn't realize how hard it was to fight against the model's tendency to generate the typical and clean version of FizzBuzz when given a generic prompt. What I have started to internalize more is that when you restrict the input to a specific prompt, you basically fix the probability distribution of the output. In a way, doing LoRA fine-tuning is like reshaping the probability distribution of the model outputs, which I guess is somewhat obvious and makes a lot of sense when you think about it.
 
-But visually what I like to imagine here is that it's almost like we're trying to *invert a bell curve*, if we exaggerate the idea that "clean" FizzBuzz is the model's preferred output near the center and "ugly" FizzBuzz is spread out around the tail of the distribution, we're essentially redistributing the probability mass into a very different shape.
+But visually what I like to imagine here is that it's almost like we're trying to *invert a bell curve*. If we exaggerate the idea that "clean" FizzBuzz is the model's preferred output near the center and "ugly" FizzBuzz is spread out around the tail of the distribution, we're essentially redistributing the probability mass into a very different shape. This was not as obvious to me in the beginning and would have helped me understand how much my self-imposed constraints made the task a lot harder.
 
 So when we rely on the model to randomly *discover* ugly output, the odds of that happening are kind of gated by what kind of Python code the model has seen and whether those snippets show up during our fine-tuning process. It could discover *ugliness* by random chance and this signal is reinforced by our reward function. But without directly introducing new information via examples, in this restricted code-gen scenario, the LoRA adapter + RL process behaves more like a sieve that filters out code snippets from the base model that meet our *ugliness* criteria and from there we increase the random odds and luck of discovering *ugliness* via the reward function.
 
@@ -457,5 +457,5 @@ So when we rely on the model to randomly *discover* ugly output, the odds of tha
 
 ## Links
 
-- Github Repo: [github.com/seantey/sloppy-fizzbuzz](github.com/seantey/sloppy-fizzbuzz)
-- TBD Socials
+- Github Repo: [github.com/seantey/sloppy-fizzbuzz](https://github.com/seantey/sloppy-fizzbuzz)
+- Twitter/X: [@seansrr](https://x.com/seansrr)
