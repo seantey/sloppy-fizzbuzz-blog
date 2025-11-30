@@ -4234,6 +4234,7 @@ margin-bottom: 0.25rem;
 </div>
 </div>
 <p><strong>🥖 The BAGUETTE Score</strong> a.k.a “<strong>B</strong>ag-based <strong>A</strong>ggregated <strong>G</strong>eometric <strong>U</strong>niqueness <strong>E</strong>ncoded-<strong>T</strong>oken <strong>T</strong>hreshold <strong>E</strong>valuator” score.</p>
+<p><em>(This math is for fun, skip to code below for easier read of the logic.)</em></p>
 <p><span class="math display">\[
 \begin{aligned}
 \large
@@ -4271,20 +4272,46 @@ V
 <li>Bag distance (a frequency-based metric similar to TF-IDF)</li>
 <li>Geometric mean (instead of arithmetic average or median)</li>
 </ul>
+<p><strong>Code Snippet</strong></p>
+<p>All this math just translates to something like this in code (for illustrative purposes):</p>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb8"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> numpy <span class="im">as</span> np</span>
+<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> textdistance <span class="im">as</span> td</span>
+<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> unsloth <span class="im">import</span> FastLanguageModel</span>
+<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-5"><a href="#cb8-5" aria-hidden="true" tabindex="-1"></a><span class="co"># Load the model and its tokenizer </span></span>
+<span id="cb8-6"><a href="#cb8-6" aria-hidden="true" tabindex="-1"></a>model, tokenizer <span class="op">=</span> FastLanguageModel.from_pretrained(</span>
+<span id="cb8-7"><a href="#cb8-7" aria-hidden="true" tabindex="-1"></a>    model_name<span class="op">=</span><span class="st">&quot;unsloth/Llama-3.2-3B-Instruct&quot;</span></span>
+<span id="cb8-8"><a href="#cb8-8" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb8-9"><a href="#cb8-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-10"><a href="#cb8-10" aria-hidden="true" tabindex="-1"></a><span class="co"># Step 1: Function strings → Token ID lists</span></span>
+<span id="cb8-11"><a href="#cb8-11" aria-hidden="true" tabindex="-1"></a>all_token_ids <span class="op">=</span> tokenizer(all_functions_list)[<span class="st">&quot;input_ids&quot;</span>]</span>
+<span id="cb8-12"><a href="#cb8-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb8-13"><a href="#cb8-13" aria-hidden="true" tabindex="-1"></a><span class="co"># Step 2: For each function i, compute distances to all others j (where j ≠ i)</span></span>
+<span id="cb8-14"><a href="#cb8-14" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> i <span class="kw">in</span> <span class="bu">range</span>(<span class="bu">len</span>(all_token_ids)):</span>
+<span id="cb8-15"><a href="#cb8-15" aria-hidden="true" tabindex="-1"></a>    bag_distance_list <span class="op">=</span> []</span>
+<span id="cb8-16"><a href="#cb8-16" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> j <span class="kw">in</span> <span class="bu">range</span>(<span class="bu">len</span>(all_token_ids)):</span>
+<span id="cb8-17"><a href="#cb8-17" aria-hidden="true" tabindex="-1"></a>        <span class="cf">if</span> i <span class="op">!=</span> j:  <span class="co"># Skip self-comparison</span></span>
+<span id="cb8-18"><a href="#cb8-18" aria-hidden="true" tabindex="-1"></a>            distance <span class="op">=</span> td.bag.normalized_distance(all_token_ids[i], all_token_ids[j])</span>
+<span id="cb8-19"><a href="#cb8-19" aria-hidden="true" tabindex="-1"></a>            bag_distance_list.append(distance)</span>
+<span id="cb8-20"><a href="#cb8-20" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb8-21"><a href="#cb8-21" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Step 3: Bag distances → Geometric mean</span></span>
+<span id="cb8-22"><a href="#cb8-22" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Use log form of geometric mean for calculations</span></span>
+<span id="cb8-23"><a href="#cb8-23" aria-hidden="true" tabindex="-1"></a>    geometric_means <span class="op">=</span> np.exp(np.mean(np.log(bag_distance_list)))</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>For actual implementation, refer to section 6 of the <a href="https://github.com/seantey/sloppy-fizzbuzz/blob/main/ugly_fizzbuzz_grpo.ipynb">Jupyter notebook</a> or read below for a slightly more detailed breakdown of the core components.</p>
 <p><strong>Tokenizer IDs</strong></p>
 <p>I considered using <a href="https://huggingface.co/spaces/hesamation/primer-llm-embedding?section=what_are_embeddings?">embeddings</a> because that’s the natural thing to try in the context of LLMs. Guess what is the cosine embedding distance between regular FizzBuzz and ugly FizzBuzz? Very similar! And that makes sense, they are both Python code snippets for FizzBuzz and the differences in code structure aren’t captured or differentiated well enough, at least with the usual vector distance measures that I tried: cosine, euclidean, etc.</p>
 <p>But what if we want to try a frequency based distance measure for text such as bag distance, then why not leverage the token IDs used during model training? Instead of using a bag of words, we <a href="https://huggingface.co/learn/llm-course/en/chapter2/4">tokenize</a> the text so that we get a similar perspective as the LLM but we just use the associated token IDs instead.</p>
 <p><em>For example:</em></p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb8"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb8-1"><a href="#cb8-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> fizzbuzz(n: <span class="bu">int</span>) <span class="op">-&gt;</span> <span class="bu">list</span>[<span class="bu">str</span>]:</span>
-<span id="cb8-2"><a href="#cb8-2" aria-hidden="true" tabindex="-1"></a>    out <span class="op">=</span> []</span>
-<span id="cb8-3"><a href="#cb8-3" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> i <span class="kw">in</span> <span class="bu">range</span>(<span class="dv">1</span>, n <span class="op">+</span> <span class="dv">1</span>):</span>
-<span id="cb8-4"><a href="#cb8-4" aria-hidden="true" tabindex="-1"></a>        <span class="cf">if</span> i <span class="op">%</span> <span class="dv">15</span> <span class="op">==</span> <span class="dv">0</span>:</span>
-<span id="cb8-5"><a href="#cb8-5" aria-hidden="true" tabindex="-1"></a>            out.append(<span class="st">&quot;FizzBuzz&quot;</span>)</span>
-<span id="cb8-6"><a href="#cb8-6" aria-hidden="true" tabindex="-1"></a>        <span class="cf">elif</span> i <span class="op">%</span> <span class="dv">3</span> <span class="op">==</span> <span class="dv">0</span>:</span>
-<span id="cb8-7"><a href="#cb8-7" aria-hidden="true" tabindex="-1"></a>    ...</span>
-<span id="cb8-8"><a href="#cb8-8" aria-hidden="true" tabindex="-1"></a>    ...</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb9"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> fizzbuzz(n: <span class="bu">int</span>) <span class="op">-&gt;</span> <span class="bu">list</span>[<span class="bu">str</span>]:</span>
+<span id="cb9-2"><a href="#cb9-2" aria-hidden="true" tabindex="-1"></a>    out <span class="op">=</span> []</span>
+<span id="cb9-3"><a href="#cb9-3" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> i <span class="kw">in</span> <span class="bu">range</span>(<span class="dv">1</span>, n <span class="op">+</span> <span class="dv">1</span>):</span>
+<span id="cb9-4"><a href="#cb9-4" aria-hidden="true" tabindex="-1"></a>        <span class="cf">if</span> i <span class="op">%</span> <span class="dv">15</span> <span class="op">==</span> <span class="dv">0</span>:</span>
+<span id="cb9-5"><a href="#cb9-5" aria-hidden="true" tabindex="-1"></a>            out.append(<span class="st">&quot;FizzBuzz&quot;</span>)</span>
+<span id="cb9-6"><a href="#cb9-6" aria-hidden="true" tabindex="-1"></a>        <span class="cf">elif</span> i <span class="op">%</span> <span class="dv">3</span> <span class="op">==</span> <span class="dv">0</span>:</span>
+<span id="cb9-7"><a href="#cb9-7" aria-hidden="true" tabindex="-1"></a>    ...</span>
+<span id="cb9-8"><a href="#cb9-8" aria-hidden="true" tabindex="-1"></a>    ...</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <p>↓ <em>One single function string gets chopped into tokens and converted to IDs</em></p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb9"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb9-1"><a href="#cb9-1" aria-hidden="true" tabindex="-1"></a>[<span class="dv">122</span>, <span class="dv">11</span>, <span class="dv">23</span>, <span class="dv">6</span>, <span class="dv">7</span>, <span class="dv">19</span>, <span class="dv">305</span>, <span class="dv">88</span>, ...]</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb10"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a>[<span class="dv">122</span>, <span class="dv">11</span>, <span class="dv">23</span>, <span class="dv">6</span>, <span class="dv">7</span>, <span class="dv">19</span>, <span class="dv">305</span>, <span class="dv">88</span>, ...]</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <p><strong>Bag Distance</strong></p>
 <p>Bag distance is a frequency based similarity measure over two sequences. Instead of comparing text as an ordered sequence of tokens, it converts each sequence into a multiset (a “bag”) which you can think of as a token-frequency vector or a word-count list.</p>
 <p>Using these unordered frequency lists, the <strong>normalized bag distance</strong> between two sequences <span class="math inline">\(x_i\)</span> and <span class="math inline">\(x_j\)</span> is:</p>
@@ -4335,36 +4362,11 @@ a_1 \times a_2 \times \cdots \times a_n
 <p>The pairwise bag distance of any two FizzBuzz functions that are similar is near zero, so if you calculate the pairwise distances of FizzBuzz A against all the others, you get a list that helps you understand how often FizzBuzz A is similar to others or if it’s far away from most of them.</p>
 <p>Afterwards, if you apply the geometric mean, the whole “average” distance is dragged down dramatically if there is even just one similar function. If the LLM generates identical functions a lot (<em>mode collapse</em>), then the resulting value very quickly becomes near zero! We can use this in the reward function to adjust the reward to help the LLM learn to generate more unique functions that have a bigger distance from each other.</p>
 <p>The search space of “weird but valid Python” is huge. The geometric mean ensures that if the model drifts toward overfitting on a specific ugly style, it gets penalized unless it keeps branching into freshly ugly territory (we call this phenomenon <em>seeking fresh BAGUETTEs</em>).</p>
-<p><strong>Code Snippet</strong></p>
-<p>All this math just translates to something like this in code (for illustrative purposes):</p>
-<div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb10"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> numpy <span class="im">as</span> np</span>
-<span id="cb10-2"><a href="#cb10-2" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> textdistance <span class="im">as</span> td</span>
-<span id="cb10-3"><a href="#cb10-3" aria-hidden="true" tabindex="-1"></a><span class="im">from</span> unsloth <span class="im">import</span> FastLanguageModel</span>
-<span id="cb10-4"><a href="#cb10-4" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb10-5"><a href="#cb10-5" aria-hidden="true" tabindex="-1"></a><span class="co"># Load the model and its tokenizer </span></span>
-<span id="cb10-6"><a href="#cb10-6" aria-hidden="true" tabindex="-1"></a>model, tokenizer <span class="op">=</span> FastLanguageModel.from_pretrained(</span>
-<span id="cb10-7"><a href="#cb10-7" aria-hidden="true" tabindex="-1"></a>    model_name<span class="op">=</span><span class="st">&quot;unsloth/Llama-3.2-3B-Instruct&quot;</span></span>
-<span id="cb10-8"><a href="#cb10-8" aria-hidden="true" tabindex="-1"></a>)</span>
-<span id="cb10-9"><a href="#cb10-9" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb10-10"><a href="#cb10-10" aria-hidden="true" tabindex="-1"></a><span class="co"># Step 1: Function strings → Token ID lists</span></span>
-<span id="cb10-11"><a href="#cb10-11" aria-hidden="true" tabindex="-1"></a>all_token_ids <span class="op">=</span> tokenizer(all_functions_list)[<span class="st">&quot;input_ids&quot;</span>]</span>
-<span id="cb10-12"><a href="#cb10-12" aria-hidden="true" tabindex="-1"></a></span>
-<span id="cb10-13"><a href="#cb10-13" aria-hidden="true" tabindex="-1"></a><span class="co"># Step 2: For each function i, compute distances to all others j (where j ≠ i)</span></span>
-<span id="cb10-14"><a href="#cb10-14" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> i <span class="kw">in</span> <span class="bu">range</span>(<span class="bu">len</span>(all_token_ids)):</span>
-<span id="cb10-15"><a href="#cb10-15" aria-hidden="true" tabindex="-1"></a>    bag_distance_list <span class="op">=</span> []</span>
-<span id="cb10-16"><a href="#cb10-16" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> j <span class="kw">in</span> <span class="bu">range</span>(<span class="bu">len</span>(all_token_ids)):</span>
-<span id="cb10-17"><a href="#cb10-17" aria-hidden="true" tabindex="-1"></a>        <span class="cf">if</span> i <span class="op">!=</span> j:  <span class="co"># Skip self-comparison</span></span>
-<span id="cb10-18"><a href="#cb10-18" aria-hidden="true" tabindex="-1"></a>            distance <span class="op">=</span> td.bag.normalized_distance(all_token_ids[i], all_token_ids[j])</span>
-<span id="cb10-19"><a href="#cb10-19" aria-hidden="true" tabindex="-1"></a>            bag_distance_list.append(distance)</span>
-<span id="cb10-20"><a href="#cb10-20" aria-hidden="true" tabindex="-1"></a>    </span>
-<span id="cb10-21"><a href="#cb10-21" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Step 3: Bag distances → Geometric mean</span></span>
-<span id="cb10-22"><a href="#cb10-22" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Use log form of geometric mean for calculations</span></span>
-<span id="cb10-23"><a href="#cb10-23" aria-hidden="true" tabindex="-1"></a>    geometric_means <span class="op">=</span> np.exp(np.mean(np.log(bag_distance_list)))</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<p>For actual implementation, refer to section 6 of the <a href="https://github.com/seantey/sloppy-fizzbuzz/blob/main/ugly_fizzbuzz_grpo.ipynb">Jupyter notebook</a>.</p>
 </section>
 <section id="results" class="level2">
 <h2 class="anchored" data-anchor-id="results">Results</h2>
 <p>Here are some examples of what the model generated in a good training run (<a href="https://github.com/seantey/sloppy-fizzbuzz/blob/main/ugly_fizzbuzz_300s_good_run.ipynb">notebook with outputs</a>):</p>
+<p><em>(All of these are working fizzbuzz code)</em></p>
 <p><strong>Exhibit 1:</strong></p>
 <div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb11"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb11-1"><a href="#cb11-1" aria-hidden="true" tabindex="-1"></a><span class="kw">def</span> fizzbuzz(n: <span class="bu">int</span>) <span class="op">-&gt;</span> <span class="bu">list</span>[<span class="bu">str</span>]:</span>
 <span id="cb11-2"><a href="#cb11-2" aria-hidden="true" tabindex="-1"></a>    res, m1, m2 <span class="op">=</span> [], <span class="dv">3</span>, <span class="dv">5</span></span>
@@ -4449,9 +4451,12 @@ a_1 \times a_2 \times \cdots \times a_n
 </section>
 <section id="links" class="level2">
 <h2 class="anchored" data-anchor-id="links">Links</h2>
+<p>If you enjoyed reading this, follow me on Twitter/X: <a href="https://x.com/seansrr"><span class="citation" data-cites="seansrr">@seansrr</span></a>. Send me a message or leave a comment to let me know what you like or anything I can improve on!</p>
+<p><strong>Check out these Github repos:</strong></p>
 <ul>
-<li>Github Repo: <a href="https://github.com/seantey/sloppy-fizzbuzz">github.com/seantey/sloppy-fizzbuzz</a></li>
-<li>Twitter/X: <a href="https://x.com/seansrr"><span class="citation" data-cites="seansrr">@seansrr</span></a></li>
+<li>Sloppy FizzBuzz Repo: <a href="https://github.com/seantey/sloppy-fizzbuzz">github.com/seantey/sloppy-fizzbuzz</a></li>
+<li>Unsloth (LLM Fine-tuning &amp; RL): <a href="https://github.com/unslothai/unsloth">github.com/unslothai/unsloth</a></li>
+<li>OpenEnv (RL interface and environments): <a href="https://github.com/meta-pytorch/OpenEnv">github.com/meta-pytorch/OpenEnv</a></li>
 </ul>
 
 

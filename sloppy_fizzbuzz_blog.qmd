@@ -194,7 +194,9 @@ Try to be aware of the balance between too much reward and too much penalty, it'
 The side effects of setting a high LLM temperature is that you might bake some bread.
 :::
 
-**🥖 The BAGUETTE Score** a.k.a “**B**ag-based **A**ggregated **G**eometric **U**niqueness **E**ncoded-**T**oken **T**hreshold **E**valuator” score.
+**🥖 The BAGUETTE Score** a.k.a “**B**ag-based **A**ggregated **G**eometric **U**niqueness **E**ncoded-**T**oken **T**hreshold **E**valuator” score. 
+
+*(This math is for fun, skip to code below for easier read of the logic.)*
 
 $$
 \begin{aligned}
@@ -237,6 +239,38 @@ The core concepts include:
 - Re-using token IDs from the model’s own token space
 - Bag distance (a frequency-based metric similar to TF-IDF)
 - Geometric mean (instead of arithmetic average or median)
+
+**Code Snippet**
+
+All this math just translates to something like this in code (for illustrative purposes):
+
+```python
+import numpy as np
+import textdistance as td
+from unsloth import FastLanguageModel
+
+# Load the model and its tokenizer 
+model, tokenizer = FastLanguageModel.from_pretrained(
+    model_name="unsloth/Llama-3.2-3B-Instruct"
+)
+
+# Step 1: Function strings → Token ID lists
+all_token_ids = tokenizer(all_functions_list)["input_ids"]
+
+# Step 2: For each function i, compute distances to all others j (where j ≠ i)
+for i in range(len(all_token_ids)):
+    bag_distance_list = []
+    for j in range(len(all_token_ids)):
+        if i != j:  # Skip self-comparison
+            distance = td.bag.normalized_distance(all_token_ids[i], all_token_ids[j])
+            bag_distance_list.append(distance)
+    
+    # Step 3: Bag distances → Geometric mean
+    # Use log form of geometric mean for calculations
+    geometric_means = np.exp(np.mean(np.log(bag_distance_list)))
+```
+
+For actual implementation, refer to section 6 of the [Jupyter notebook](https://github.com/seantey/sloppy-fizzbuzz/blob/main/ugly_fizzbuzz_grpo.ipynb) or read below for a slightly more detailed breakdown of the core components.
 
 **Tokenizer IDs**
 
@@ -329,41 +363,11 @@ Afterwards, if you apply the geometric mean, the whole "average" distance is dra
 
 The search space of “weird but valid Python” is huge. The geometric mean ensures that if the model drifts toward overfitting on a specific ugly style, it gets penalized unless it keeps branching into freshly ugly territory (we call this phenomenon *seeking fresh BAGUETTEs*).
 
-**Code Snippet**
-
-All this math just translates to something like this in code (for illustrative purposes):
-
-```python
-import numpy as np
-import textdistance as td
-from unsloth import FastLanguageModel
-
-# Load the model and its tokenizer 
-model, tokenizer = FastLanguageModel.from_pretrained(
-    model_name="unsloth/Llama-3.2-3B-Instruct"
-)
-
-# Step 1: Function strings → Token ID lists
-all_token_ids = tokenizer(all_functions_list)["input_ids"]
-
-# Step 2: For each function i, compute distances to all others j (where j ≠ i)
-for i in range(len(all_token_ids)):
-    bag_distance_list = []
-    for j in range(len(all_token_ids)):
-        if i != j:  # Skip self-comparison
-            distance = td.bag.normalized_distance(all_token_ids[i], all_token_ids[j])
-            bag_distance_list.append(distance)
-    
-    # Step 3: Bag distances → Geometric mean
-    # Use log form of geometric mean for calculations
-    geometric_means = np.exp(np.mean(np.log(bag_distance_list)))
-```
-
-For actual implementation, refer to section 6 of the [Jupyter notebook](https://github.com/seantey/sloppy-fizzbuzz/blob/main/ugly_fizzbuzz_grpo.ipynb).
-
 ## Results
 
 Here are some examples of what the model generated in a good training run ([notebook with outputs](https://github.com/seantey/sloppy-fizzbuzz/blob/main/ugly_fizzbuzz_300s_good_run.ipynb)):
+
+*(All of these are working fizzbuzz code)*
 
 **Exhibit 1:**
 ```python
@@ -457,5 +461,10 @@ So when we rely on the model to randomly *discover* ugly output, the odds of tha
 
 ## Links
 
-- Github Repo: [github.com/seantey/sloppy-fizzbuzz](https://github.com/seantey/sloppy-fizzbuzz)
-- Twitter/X: [@seansrr](https://x.com/seansrr)
+If you enjoyed reading this, follow me on Twitter/X: [@seansrr](https://x.com/seansrr). Send me a message or leave a comment to let me know what you like or anything I can improve on!
+
+**Check out these Github repos:**
+
+- Sloppy FizzBuzz Repo: [github.com/seantey/sloppy-fizzbuzz](https://github.com/seantey/sloppy-fizzbuzz)
+- Unsloth (LLM Fine-tuning & RL): [github.com/unslothai/unsloth](https://github.com/unslothai/unsloth)
+- OpenEnv (RL interface and environments): [github.com/meta-pytorch/OpenEnv](https://github.com/meta-pytorch/OpenEnv)
