@@ -4207,7 +4207,7 @@ margin-bottom: 0.25rem;
 <li><strong>Double code block</strong> trojan horse, where it generates correct code in the first block which passes the test and then generates whatever in the second block but the whole completion gets fed into training so the model learns bad patterns.</li>
 <li><strong>Generating random long gibberish</strong> when we increase the novelty rewards too much such that it overpowers penalty for non-functional code.</li>
 </ul>
-<p>So to counteract that, we penalize the model heavily whenever it generates code patterns that we don’t like.</p>
+<p>So to counteract that, we penalize the model heavily whenever it generates code patterns that we don’t like. (Enforced via code checks in reward function, see Section 6.4 of the <a href="https://github.com/seantey/sloppy-fizzbuzz/blob/main/ugly_fizzbuzz_grpo.ipynb">Jupyter notebook</a>)</p>
 <p>Penalties introduced to correct model behavior include:</p>
 <ul>
 <li><strong>No syntax errors:</strong> “Only valid Python code!”</li>
@@ -4234,7 +4234,7 @@ margin-bottom: 0.25rem;
 </div>
 </div>
 <p><strong>🥖 The BAGUETTE Score</strong> a.k.a “<strong>B</strong>ag-based <strong>A</strong>ggregated <strong>G</strong>eometric <strong>U</strong>niqueness <strong>E</strong>ncoded-<strong>T</strong>oken <strong>T</strong>hreshold <strong>E</strong>valuator” score.</p>
-<p><em>(This math is for fun, skip to code below for easier read of the logic.)</em></p>
+<p><em>(This math is for fun, I recommend skipping to the code snippet below for easier read of the logic.)</em></p>
 <p><span class="math display">\[
 \begin{aligned}
 \large
@@ -4264,7 +4264,7 @@ V
 \end{aligned}
 }
 \]</span></p>
-<p>This is just a fancy looking math equation I made up, honestly the code is much simpler and probably easier to understand. But I needed to justify the amount of time I banged my head against the wall trying to create a “novelty” component that can exert the right type of exploration pressure so that the LLM can learn to generate more diverse solutions that are ugly.</p>
+<p>This is just a fancy looking math equation I made up because I needed to justify the amount of time I banged my head against the wall trying to create a “novelty” component that can exert the right type of exploration pressure so that the LLM can learn to generate more diverse solutions that are ugly.</p>
 <p>Jokes aside, individually the concepts used in this component are relatively simple but the results are quite interesting when combined. This component is the key element that prevents <em>mode collapse</em> during model training and works good enough for our goals of encouraging <em>uniqueness and ugliness</em>.</p>
 <p>The core concepts include:</p>
 <ul>
@@ -4292,12 +4292,14 @@ V
 <span id="cb8-16"><a href="#cb8-16" aria-hidden="true" tabindex="-1"></a>    <span class="cf">for</span> j <span class="kw">in</span> <span class="bu">range</span>(<span class="bu">len</span>(all_token_ids)):</span>
 <span id="cb8-17"><a href="#cb8-17" aria-hidden="true" tabindex="-1"></a>        <span class="cf">if</span> i <span class="op">!=</span> j:  <span class="co"># Skip self-comparison</span></span>
 <span id="cb8-18"><a href="#cb8-18" aria-hidden="true" tabindex="-1"></a>            distance <span class="op">=</span> td.bag.normalized_distance(all_token_ids[i], all_token_ids[j])</span>
-<span id="cb8-19"><a href="#cb8-19" aria-hidden="true" tabindex="-1"></a>            bag_distance_list.append(distance)</span>
-<span id="cb8-20"><a href="#cb8-20" aria-hidden="true" tabindex="-1"></a>    </span>
-<span id="cb8-21"><a href="#cb8-21" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Step 3: Bag distances → Geometric mean</span></span>
-<span id="cb8-22"><a href="#cb8-22" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Use log form of geometric mean for calculations</span></span>
-<span id="cb8-23"><a href="#cb8-23" aria-hidden="true" tabindex="-1"></a>    geometric_means <span class="op">=</span> np.exp(np.mean(np.log(bag_distance_list)))</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
-<p>For actual implementation, refer to section 6 of the <a href="https://github.com/seantey/sloppy-fizzbuzz/blob/main/ugly_fizzbuzz_grpo.ipynb">Jupyter notebook</a> or read below for a slightly more detailed breakdown of the core components.</p>
+<span id="cb8-19"><a href="#cb8-19" aria-hidden="true" tabindex="-1"></a>            <span class="co"># Avoid np.log(0), numerical stability clamp</span></span>
+<span id="cb8-20"><a href="#cb8-20" aria-hidden="true" tabindex="-1"></a>            distance <span class="op">=</span> <span class="bu">max</span>(distance, <span class="fl">1e-8</span>)</span>
+<span id="cb8-21"><a href="#cb8-21" aria-hidden="true" tabindex="-1"></a>            bag_distance_list.append(distance)</span>
+<span id="cb8-22"><a href="#cb8-22" aria-hidden="true" tabindex="-1"></a>    </span>
+<span id="cb8-23"><a href="#cb8-23" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Step 3: Bag distances → Geometric mean</span></span>
+<span id="cb8-24"><a href="#cb8-24" aria-hidden="true" tabindex="-1"></a>    <span class="co"># Use log form of geometric mean for calculations</span></span>
+<span id="cb8-25"><a href="#cb8-25" aria-hidden="true" tabindex="-1"></a>    geometric_means <span class="op">=</span> np.exp(np.mean(np.log(bag_distance_list)))</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
+<p>For actual implementation, refer to section 6 of the <a href="https://github.com/seantey/sloppy-fizzbuzz/blob/main/ugly_fizzbuzz_grpo.ipynb">Jupyter notebook</a> or read below for a breakdown of the core components.</p>
 <p><strong>Tokenizer IDs</strong></p>
 <p>I considered using <a href="https://huggingface.co/spaces/hesamation/primer-llm-embedding?section=what_are_embeddings?">embeddings</a> because that’s the natural thing to try in the context of LLMs. Guess what is the cosine embedding distance between regular FizzBuzz and ugly FizzBuzz? Very similar! And that makes sense, they are both Python code snippets for FizzBuzz and the differences in code structure aren’t captured or differentiated well enough, at least with the usual vector distance measures that I tried: cosine, euclidean, etc.</p>
 <p>But what if we want to try a frequency based distance measure for text such as bag distance, then why not leverage the token IDs used during model training? Instead of using a bag of words, we <a href="https://huggingface.co/learn/llm-course/en/chapter2/4">tokenize</a> the text so that we get a similar perspective as the LLM but we just use the associated token IDs instead.</p>
@@ -4314,6 +4316,10 @@ V
 <div class="code-copy-outer-scaffold"><div class="sourceCode" id="cb10"><pre class="sourceCode python code-with-copy"><code class="sourceCode python"><span id="cb10-1"><a href="#cb10-1" aria-hidden="true" tabindex="-1"></a>[<span class="dv">122</span>, <span class="dv">11</span>, <span class="dv">23</span>, <span class="dv">6</span>, <span class="dv">7</span>, <span class="dv">19</span>, <span class="dv">305</span>, <span class="dv">88</span>, ...]</span></code></pre></div><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></div>
 <p><strong>Bag Distance</strong></p>
 <p>Bag distance is a frequency based similarity measure over two sequences. Instead of comparing text as an ordered sequence of tokens, it converts each sequence into a multiset (a “bag”) which you can think of as a token-frequency vector or a word-count list.</p>
+<p>When we apply bag distance to the token ID lists, we’re essentially comparing:</p>
+<blockquote class="blockquote">
+<p>“How different are the token frequency profiles of these two functions?”</p>
+</blockquote>
 <p>Using these unordered frequency lists, the <strong>normalized bag distance</strong> between two sequences <span class="math inline">\(x_i\)</span> and <span class="math inline">\(x_j\)</span> is:</p>
 <p><span class="math display">\[
 \begin{aligned}
@@ -4335,10 +4341,6 @@ where <span class="math inline">\(f_i(t)\)</span> is the number of times token <
 <li><span class="math inline">\(d(x_i, x_j) = 1\)</span>: the functions share zero tokens and are completely different</li>
 <li><span class="math inline">\(0 &lt; d(x_i, x_j) &lt; 1\)</span>: somewhere in between, partial overlap of tokens</li>
 </ul>
-<p>When we apply bag distance to the token ID lists, we’re essentially comparing:</p>
-<blockquote class="blockquote">
-<p>“How different are the token frequency profiles of these two functions?”</p>
-</blockquote>
 <p>Even though the underlying algorithm ignores order, it still captures meaningful enough style, structure, and operator usage patterns, which is exactly what you want when encouraging “ugly but unique” completion patterns:</p>
 <ul>
 <li>A function that uses while loops vs for loops → different bags</li>

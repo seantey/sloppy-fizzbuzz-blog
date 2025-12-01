@@ -175,7 +175,7 @@ This phenomenon is known as **reward hacking** and here are some things I've see
 - **Double code block** trojan horse, where it generates correct code in the first block which passes the test and then generates whatever in the second block but the whole completion gets fed into training so the model learns bad patterns.
 - **Generating random long gibberish** when we increase the novelty rewards too much such that it overpowers penalty for non-functional code.
 
-So to counteract that, we penalize the model heavily whenever it generates code patterns that we don't like.
+So to counteract that, we penalize the model heavily whenever it generates code patterns that we don't like. (Enforced via code checks in reward function, see Section 6.4 of the [Jupyter notebook](https://github.com/seantey/sloppy-fizzbuzz/blob/main/ugly_fizzbuzz_grpo.ipynb))
 
 Penalties introduced to correct model behavior include:
 
@@ -196,7 +196,7 @@ The side effects of setting a high LLM temperature is that you might bake some b
 
 **🥖 The BAGUETTE Score** a.k.a “**B**ag-based **A**ggregated **G**eometric **U**niqueness **E**ncoded-**T**oken **T**hreshold **E**valuator” score. 
 
-*(This math is for fun, skip to code below for easier read of the logic.)*
+*(This math is for fun, I recommend skipping to the code snippet below for easier read of the logic.)*
 
 $$
 \begin{aligned}
@@ -230,7 +230,7 @@ V
 $$
 
 
-This is just a fancy looking math equation I made up, honestly the code is much simpler and probably easier to understand. But I needed to justify the amount of time I banged my head against the wall trying to create a "novelty" component that can exert the right type of exploration pressure so that the LLM can learn to generate more diverse solutions that are ugly.
+This is just a fancy looking math equation I made up because I needed to justify the amount of time I banged my head against the wall trying to create a "novelty" component that can exert the right type of exploration pressure so that the LLM can learn to generate more diverse solutions that are ugly.
 
 Jokes aside, individually the concepts used in this component are relatively simple but the results are quite interesting when combined. This component is the key element that prevents *mode collapse* during model training and works good enough for our goals of encouraging *uniqueness and ugliness*.
 
@@ -263,6 +263,8 @@ for i in range(len(all_token_ids)):
     for j in range(len(all_token_ids)):
         if i != j:  # Skip self-comparison
             distance = td.bag.normalized_distance(all_token_ids[i], all_token_ids[j])
+            # Avoid np.log(0), numerical stability clamp
+            distance = max(distance, 1e-8)
             bag_distance_list.append(distance)
     
     # Step 3: Bag distances → Geometric mean
@@ -270,7 +272,7 @@ for i in range(len(all_token_ids)):
     geometric_means = np.exp(np.mean(np.log(bag_distance_list)))
 ```
 
-For actual implementation, refer to section 6 of the [Jupyter notebook](https://github.com/seantey/sloppy-fizzbuzz/blob/main/ugly_fizzbuzz_grpo.ipynb) or read below for a slightly more detailed breakdown of the core components.
+For actual implementation, refer to section 6 of the [Jupyter notebook](https://github.com/seantey/sloppy-fizzbuzz/blob/main/ugly_fizzbuzz_grpo.ipynb) or read below for a breakdown of the core components.
 
 **Tokenizer IDs**
 
@@ -299,6 +301,10 @@ def fizzbuzz(n: int) -> list[str]:
 
 Bag distance is a frequency based similarity measure over two sequences. Instead of comparing text as an ordered sequence of tokens, it converts each sequence into a multiset (a “bag”) which you can think of as a token-frequency vector or a word-count list.
 
+When we apply bag distance to the token ID lists, we’re essentially comparing:
+
+> “How different are the token frequency profiles of these two functions?”
+
 Using these unordered frequency lists, the **normalized bag distance** between two sequences $x_i$ and $x_j$ is:
 
 $$
@@ -324,11 +330,6 @@ Basically you take the absolute value of the difference between token counts the
 - $d(x_i, x_j) = 0$: the two functions are identical
 - $d(x_i, x_j) = 1$: the functions share zero tokens and are completely different
 - $0 < d(x_i, x_j) < 1$: somewhere in between, partial overlap of tokens
-
-
-When we apply bag distance to the token ID lists, we’re essentially comparing:
-
-> “How different are the token frequency profiles of these two functions?”
 
 Even though the underlying algorithm ignores order, it still captures meaningful enough style, structure, and operator usage patterns, which is exactly what you want when encouraging “ugly but unique” completion patterns:
 
