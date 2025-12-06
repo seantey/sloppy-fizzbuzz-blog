@@ -230,7 +230,7 @@ V
 $$
 
 
-This is just a fancy looking math equation I made up because I needed to justify the amount of time I banged my head against the wall trying to create a "novelty" component that can exert the right type of exploration pressure so that the LLM can learn to generate more diverse solutions that are ugly.
+This is just a fancy looking math equation I made up because I needed to justify the amount of time I banged my head against the wall trying to create a "novelty" component. I needed something that could exert the right type of exploration pressure so that the LLM could learn to generate more diverse solutions that are ugly.
 
 Jokes aside, individually the concepts used in this component are relatively simple but the results are quite interesting when combined. This component is the key element that prevents *mode collapse* during model training and works good enough for our goals of encouraging *uniqueness and ugliness*.
 
